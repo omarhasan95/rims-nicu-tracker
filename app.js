@@ -4,9 +4,16 @@
  * component can be referenced directly in the page.
  */
 const { useState, useMemo, useEffect, useCallback } = React;
-const { initializeApp } = firebase;
-const { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = firebase.auth;
-const { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } = firebase.firestore;
+// Remove destructured imports from the modular API.  When using the
+// Firebase compat SDKs (loaded via the UMD scripts in index.html), the
+// modular functions such as `initializeApp`, `getAuth`, `getFirestore`,
+// `collection`, `onSnapshot`, `addDoc`, `updateDoc`, `deleteDoc`, `doc`,
+// and `serverTimestamp` are not attached in the same way as in the ES
+// module build.  Instead we will rely on the v8‑style compat APIs via
+// the `firebase` namespace.  For example, you initialize Firebase with
+// `firebase.initializeApp()` and obtain the auth and firestore services
+// via `firebase.auth()` and `firebase.firestore()`.  The server
+// timestamp sentinel is exposed on `firebase.firestore.FieldValue`.
 
 
 // App.jsx
@@ -26,9 +33,10 @@ const fallbackConfig = {
 
 // Initialize Firebase
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : fallbackConfig;
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+const app = firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const serverTimestamp = firebase.firestore.FieldValue.serverTimestamp;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 // Constants
@@ -255,9 +263,11 @@ function App() {
         const initAuth = async () => {
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
+                    // For custom token auth, call the compat method on the auth instance.
+                    await auth.signInWithCustomToken(__initial_auth_token);
                 } else {
-                    await signInAnonymously(auth);
+                    // Otherwise, sign in anonymously via the auth instance.
+                    await auth.signInAnonymously();
                 }
             } catch (err) {
                 console.error('Auth error:', err);
@@ -265,15 +275,16 @@ function App() {
             }
         };
         initAuth();
-        const unsubscribe = onAuthStateChanged(auth, setUser);
+        // Listen for authentication state changes using the compat API.
+        const unsubscribe = auth.onAuthStateChanged(setUser);
         return () => unsubscribe();
     }, []);
 
     useEffect(() => {
         if (!user) return;
         setIsSyncing(true);
-        const q = collection(db, getCollectionPath());
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const q = db.collection(getCollectionPath());
+        const unsubscribe = q.onSnapshot((snapshot) => {
             const fetched = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             setPatients(fetched);
             setIsSyncing(false);
@@ -445,14 +456,16 @@ function App() {
         if (!user) return;
         setIsLoading(true);
         try {
-            const collRef = collection(db, getCollectionPath());
+            const collRef = db.collection(getCollectionPath());
             const dataToSave = { ...formData, updatedAt: serverTimestamp() };
             if (editingPatient) {
-                await updateDoc(doc(db, getCollectionPath(), editingPatient.id), dataToSave);
+                // Update the existing document by ID using the compat API.
+                await collRef.doc(editingPatient.id).update(dataToSave);
                 showToast('Patient record updated successfully', 'success');
             } else {
+                // Assign createdAt timestamp on new record.
                 dataToSave.createdAt = serverTimestamp();
-                await addDoc(collRef, dataToSave);
+                await collRef.add(dataToSave);
                 showToast('New patient added successfully', 'success');
             }
             closeModal();
@@ -463,7 +476,8 @@ function App() {
     const confirmDeletePatient = async () => {
         if (!confirmDelete || !user) return;
         try {
-            await deleteDoc(doc(db, getCollectionPath(), confirmDelete.id));
+            // Delete the document by ID using the compat API.
+            await db.collection(getCollectionPath()).doc(confirmDelete.id).delete();
             showToast('Patient record deleted', 'success');
         } catch (error) { console.error("Error deleting: ", error); showToast('Failed to delete', 'error'); }
         finally { setConfirmDelete(null); }
