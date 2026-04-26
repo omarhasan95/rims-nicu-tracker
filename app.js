@@ -559,7 +559,9 @@ function App() {
                             <div className="relative w-full lg:w-96 group flex-1">
                                 <div class                                         
 
-// Mount the application on page load
-document.addEventListener('DOMContentLoaded', function() {
-  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-});
+// Mount the application immediately. Since this script is loaded at the end
+// of the document, the DOM is already available and there's no need to
+// wait for the DOMContentLoaded event. Registering a listener after the
+// event has fired would result in the callback never running and a blank
+// page. Instead, mount the React app directly.
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
